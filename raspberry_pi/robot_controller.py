@@ -99,17 +99,32 @@ class L298NMotorDriver:
                 f"Inizializzazione GPIO L298N: ENA={ena}, IN1={in1}, IN2={in2} | "
                 f"ENB={enb}, IN3={in3}, IN4={in4}"
             )
+            opened = []
             try:
                 # Su Pi 3B v1.2 100Hz evita ronzii eccessivi sui motori DC con L298N
                 self.pwm_left = PWMOutputDevice(self.ena_pin, frequency=100)
+                opened.append(self.pwm_left)
                 self.dir_left1 = DigitalOutputDevice(self.in1_pin)
+                opened.append(self.dir_left1)
                 self.dir_left2 = DigitalOutputDevice(self.in2_pin)
+                opened.append(self.dir_left2)
 
                 self.pwm_right = PWMOutputDevice(self.enb_pin, frequency=100)
+                opened.append(self.pwm_right)
                 self.dir_right1 = DigitalOutputDevice(self.in3_pin)
+                opened.append(self.dir_right1)
                 self.dir_right2 = DigitalOutputDevice(self.in4_pin)
+                opened.append(self.dir_right2)
             except Exception as e:
-                logging.error(f"Errore inizializzazione gpiozero: {e}. Modalità simulazione attiva.")
+                for dev in opened:
+                    try:
+                        dev.close()
+                    except Exception:
+                        pass
+                logging.error(
+                    f"Errore inizializzazione gpiozero ({e}). Verifica che non ci sia un altro "
+                    f"script/servizio attivo sui pin GPIO. Modalità simulazione attiva."
+                )
                 self.pwm_left = None
         else:
             logging.warning("Librerie GPIO non rilevate (es. PC). Attiva modalità simulata.")
@@ -208,6 +223,11 @@ class StreamingOutput(io.BufferedIOBase):
 
 
 stream_output = StreamingOutput()
+
+
+class ReuseThreadingHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+    daemon_threads = True
 
 
 class MJPEGStreamHandler(BaseHTTPRequestHandler):
@@ -453,9 +473,23 @@ def main():
         width=args.width, height=args.height, fps=args.fps, rotate_180=args.rotate_180
     )
 
-    # ThreadingHTTPServer permette a tutti i 6 tablet di ricevere lo stream video insieme!
-    cam_server = ThreadingHTTPServer(('0.0.0.0', args.cam_port), MJPEGStreamHandler)
-    cam_server.daemon_threads = True
+    # ReuseThreadingHTTPServer permette a tutti i 6 tablet di ricevere lo stream e previene Errno 98 al riavvio
+    try:
+        cam_server = ReuseThreadingHTTPServer(('0.0.0.0', args.cam_port), MJPEGStreamHandler)
+    except OSError as bind_err:
+        logging.error(
+            f"Porta {args.cam_port} già occupata ({bind_err}). "
+            f"Chiudi il processo precedente (es: pkill -f robot_controller.py o sudo systemctl stop fermi_rover)."
+        )
+        motor_driver.cleanup()
+        if picam2_instance:
+            try:
+                picam2_instance.stop_recording()
+                picam2_instance.close()
+            except Exception:
+                pass
+        sys.exit(1)
+
     local_ip = get_local_ip()
     logging.info(f"Stream video MJPEG Multi-Tablet su: http://{local_ip}:{args.cam_port}/stream.mjpg")
     threading.Thread(target=cam_server.serve_forever, daemon=True).start()
