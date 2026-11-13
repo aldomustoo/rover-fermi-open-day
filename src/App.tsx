@@ -44,7 +44,7 @@ export default function App() {
     activePilotName: null,
     timeRemainingSec: 45,
     slotDurationSec: 45,
-    maxSpeedPercent: 75,
+    maxSpeedPercent: 100,
     safeMode: true,
     queue: [],
   });
@@ -78,6 +78,7 @@ export default function App() {
 
   const isMyTurn = queueState.activePilotId === myTabletId;
   const prevIsMyTurn = useRef(isMyTurn);
+  const activeDriveRef = useRef<{ left: number; right: number }>({ left: 0, right: 0 });
 
   // Turn arrival sound effect
   useEffect(() => {
@@ -198,9 +199,31 @@ export default function App() {
     };
   }, [myTabletId, myTabletName]);
 
+  // Keepalive continuo (ogni 150ms) mentre il pilota tiene premuto il joystick o un tasto
+  useEffect(() => {
+    if (!isMyTurn) {
+      activeDriveRef.current = { left: 0, right: 0 };
+      return;
+    }
+    const interval = setInterval(() => {
+      const { left, right } = activeDriveRef.current;
+      if ((left !== 0 || right !== 0) && wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            event: 'drive:command',
+            left,
+            right,
+          })
+        );
+      }
+    }, 150);
+    return () => clearInterval(interval);
+  }, [isMyTurn]);
+
   // Actions
   const handleDriveCommand = useCallback(
     (left: number, right: number) => {
+      activeDriveRef.current = { left, right };
       setLeftMotorSpeed(left);
       setRightMotorSpeed(right);
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -217,6 +240,7 @@ export default function App() {
   );
 
   const handleStopDrive = useCallback(() => {
+    activeDriveRef.current = { left: 0, right: 0 };
     setLeftMotorSpeed(0);
     setRightMotorSpeed(0);
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -355,7 +379,7 @@ export default function App() {
             </div>
 
             {/* Interactive Control Canvas */}
-            <div className="py-2 flex items-center justify-center min-h-[170px]">
+            <div className="relative py-2 flex items-center justify-center min-h-[170px]">
               {controlMode === 'joystick' ? (
                 <TouchJoystick
                   enabled={isMyTurn}
@@ -368,6 +392,18 @@ export default function App() {
                   onDriveCommand={handleDriveCommand}
                   onStop={handleStopDrive}
                 />
+              )}
+
+              {!isMyTurn && !queueState.activePilotId && (
+                <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px] rounded-xl flex items-center justify-center p-4 z-10">
+                  <button
+                    type="button"
+                    onClick={handleJoinQueue}
+                    className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-cyan-500/30 border border-cyan-400/50 transition active:scale-95 cursor-pointer"
+                  >
+                    PRENDI I COMANDI (ROVER LIBERO)
+                  </button>
+                </div>
               )}
             </div>
 

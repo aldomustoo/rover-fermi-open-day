@@ -73,7 +73,7 @@ const queueState: QueueState = {
   activePilotName: null,
   timeRemainingSec: 45,
   slotDurationSec: 45,
-  maxSpeedPercent: 75,
+  maxSpeedPercent: 100,
   safeMode: true,
   queue: [],
 };
@@ -301,9 +301,11 @@ async function startServer() {
       });
 
       ws.on('close', () => {
-        robotWs = null;
-        robotState.connected = false;
-        broadcast('robot:status', { connected: false });
+        if (robotWs === ws) {
+          robotWs = null;
+          robotState.connected = false;
+          broadcast('robot:status', { connected: false });
+        }
       });
 
       return;

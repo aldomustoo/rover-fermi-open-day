@@ -83,7 +83,7 @@ PIN_IN4 = 27  # Direzione Destra B     (Pin fisico 13 | WiringPi GPIO 2)
 # CLASSE DRIVER MOTORI L298N CON WATCHDOG FAIL-SAFE
 # ==============================================================================
 class L298NMotorDriver:
-    def __init__(self, ena=PIN_ENA, in1=PIN_IN1, in2=PIN_IN2, enb=PIN_ENB, in3=PIN_IN3, in4=PIN_IN4):
+    def __init__(self, ena=PIN_ENA, in1=PIN_IN1, in2=PIN_IN2, enb=PIN_ENB, in3=PIN_IN3, in4=PIN_IN4, pwm_freq=500):
         self.ena_pin = ena
         self.in1_pin = in1
         self.in2_pin = in2
@@ -91,26 +91,26 @@ class L298NMotorDriver:
         self.in3_pin = in3
         self.in4_pin = in4
         self.last_command_time = time.time()
-        self.watchdog_timeout = 0.40  # 400ms senza comandi = STOP immediato
+        self.watchdog_timeout = 0.70  # 700ms senza comandi/keepalive = STOP immediato
         self.is_stopped = True
+        self.last_logged = (0, 0)
         self._lock = threading.Lock()
 
         if HAS_GPIO:
             logging.info(
                 f"Inizializzazione GPIO L298N: ENA={ena}, IN1={in1}, IN2={in2} | "
-                f"ENB={enb}, IN3={in3}, IN4={in4}"
+                f"ENB={enb}, IN3={in3}, IN4={in4} (PWM {pwm_freq}Hz)"
             )
             opened = []
             try:
-                # Su Pi 3B v1.2 100Hz evita ronzii eccessivi sui motori DC con L298N
-                self.pwm_left = PWMOutputDevice(self.ena_pin, frequency=100)
+                self.pwm_left = PWMOutputDevice(self.ena_pin, frequency=pwm_freq)
                 opened.append(self.pwm_left)
                 self.dir_left1 = DigitalOutputDevice(self.in1_pin)
                 opened.append(self.dir_left1)
                 self.dir_left2 = DigitalOutputDevice(self.in2_pin)
                 opened.append(self.dir_left2)
 
-                self.pwm_right = PWMOutputDevice(self.enb_pin, frequency=100)
+                self.pwm_right = PWMOutputDevice(self.enb_pin, frequency=pwm_freq)
                 opened.append(self.pwm_right)
                 self.dir_right1 = DigitalOutputDevice(self.in3_pin)
                 opened.append(self.dir_right1)
@@ -145,9 +145,11 @@ class L298NMotorDriver:
             right_speed = max(-100, min(100, int(right_speed)))
             self.is_stopped = (left_speed == 0 and right_speed == 0)
 
+            if (left_speed, right_speed) != self.last_logged:
+                self.last_logged = (left_speed, right_speed)
+                logging.info(f"[DRIVE] Motori -> SX={left_speed}% | DX={right_speed}%")
+
             if not self.pwm_left:
-                if not self.is_stopped:
-                    logging.debug(f"[SIMULATORE MOTORI] SX={left_speed}% | DX={right_speed}%")
                 return
 
             try:
@@ -463,6 +465,8 @@ def main():
     parser.add_argument("--height", type=int, default=360, help="Altezza video (default 360 per 16:9 Wide)")
     parser.add_argument("--fps", type=int, default=24, help="Frame rate video (default 24fps)")
     parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
+    parser.add_argument("--pwm-freq", type=int, default=500, help="Frequenza PWM L298N/L298D in Hz (default 500)")
+    parser.add_argument("--test-motors", action="store_true", help="Esegue un test diretto dei motori L298N e poi esce")
     parser.add_argument("--ena", type=int, default=PIN_ENA, help="GPIO BCM per ENA (sinistro)")
     parser.add_argument("--in1", type=int, default=PIN_IN1, help="GPIO BCM per IN1 (sinistro)")
     parser.add_argument("--in2", type=int, default=PIN_IN2, help="GPIO BCM per IN2 (sinistro)")
@@ -478,8 +482,30 @@ def main():
 
     motor_driver = L298NMotorDriver(
         ena=args.ena, in1=args.in1, in2=args.in2,
-        enb=args.enb, in3=args.in3, in4=args.in4
+        enb=args.enb, in3=args.in3, in4=args.in4,
+        pwm_freq=args.pwm_freq
     )
+
+    if args.test_motors:
+        logging.info("=== AVVIO TEST MOTORI DIRETTO (SENZA SERVER) ===")
+        try:
+            for label, l_spd, r_spd in [
+                ("Motore SINISTRO avanti 100%", 100, 0),
+                ("Motore SINISTRO indietro 100%", -100, 0),
+                ("Motore DESTRO avanti 100%", 0, 100),
+                ("Motore DESTRO indietro 100%", 0, -100),
+                ("Entrambi AVANTI 100%", 100, 100),
+            ]:
+                logging.info(f"TEST: {label}")
+                for _ in range(4):
+                    motor_driver.set_motors(l_spd, r_spd)
+                    time.sleep(0.35)
+                motor_driver.set_motors(0, 0)
+                time.sleep(0.5)
+        finally:
+            motor_driver.cleanup()
+        logging.info("=== TEST MOTORI COMPLETATO ===")
+        return
 
     picam2_instance = start_camera_capture(
         width=args.width, height=args.height, fps=args.fps, rotate_180=args.rotate_180
