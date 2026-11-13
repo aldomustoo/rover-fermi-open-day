@@ -161,43 +161,95 @@ sudo iw dev wlan0 set power_save off
 
 ---
 
-## 💻 5. Guida Server Centrale (LAN Porta 8080) — Cosa Eseguire & Codice
+## 💻 5. Guida Server Centrale (LAN Porta 8080) — Docker su VM Alpine Linux
 
-Il server centrale può girare su un PC/Portatile in laboratorio (Windows, Linux o macOS) oppure su un mini-PC sulla stessa LAN.
+Il server centralizzato è completamente containerizzato tramite **`Dockerfile`** e **`docker-compose.yml`** basati su `node:22-alpine`.
 
-### A. Installazione e Avvio sulla Porta `8080`
-1. Assicurati di avere **Node.js ≥ 20** installato (`node -v`).
-2. Nella cartella del progetto, installa le dipendenze e compila il frontend:
-```bash
-npm install
-npm run build
+> **⚠️ RETE DELLA VM (IMPORTANTE)**: Nelle impostazioni dell'hypervisor (Proxmox, VirtualBox, VMware), imposta la scheda di rete della VM Alpine Linux in modalità **Bridged (Scheda con Bridge)** e **non** in NAT! Solo in modalità Bridged la VM riceverà un IP della LAN del laboratorio (es. `192.168.1.100`) raggiungibile dai 6 tablet, dal Raspberry Pi e dallo Shelly 1.
+
+---
+
+### Opzione A (Consigliata): Installazione Docker + Docker Compose su Alpine Linux & Avvio Container
+
+#### 1. Abilita il repository `community` su Alpine Linux
+Accedi alla VM Alpine come `root` (o con `doas`/`sudo`) e apri il file dei repository:
+```sh
+vi /etc/apk/repositories
 ```
-3. Avvia il server in modalità produzione sulla **porta `8080`**:
+Assicurati che la riga che termina con **`/community`** **non** abbia il `#` davanti (decommentala), ad esempio:
+```text
+https://dl-cdn.alpinelinux.org/alpine/v3.20/main
+https://dl-cdn.alpinelinux.org/alpine/v3.20/community
+```
+Salva ed esci (`ESC`, poi `:wq` + `Invio`).
 
-- **Linux / macOS**:
-  ```bash
-  PORT=8080 NODE_ENV=production npm start
-  ```
-- **Windows (PowerShell)**:
-  ```powershell
-  $env:PORT="8080"; $env:NODE_ENV="production"; npm start
-  ```
-- **Windows (CMD)**:
-  ```cmd
-  set PORT=8080 && set NODE_ENV=production && npm start
-  ```
+#### 2. Installa Docker e Docker Compose v2 su Alpine
+```sh
+apk update
+apk add docker docker-cli-compose git
+```
+*(Opzionale: se vuoi verificare o installare anche utility di rete utili per testare lo Shelly e il Pi: `apk add curl iproute2`.)*
 
-*(Per test in sviluppo puoi usare `PORT=8080 npm run dev`.)*
+#### 3. Abilita e avvia il servizio Docker con OpenRC
+```sh
+rc-update add docker default
+service docker start
+```
+*(Se usi un utente non-root, es. `fermi`, aggiungilo al gruppo docker e rifai login: `addgroup fermi docker`.)*
 
-4. Verifica l'IP LAN del server (es. con `ip a` su Linux o `ipconfig` su Windows — supponiamo `192.168.1.100`).
-5. **Firewall**: consenti il traffico TCP in ingresso sulla porta **`8080`** sul PC server (su Windows Firewall consenti Node.js / porta 8080 su Rete Privata; su Ubuntu `sudo ufw allow 8080/tcp`).
+Verifica che entrambi funzionino correttamente:
+```sh
+docker --version
+docker compose version
+```
 
-### B. Cosa fa il Codice Server (`server.ts`)
+#### 4. Avvia il Server Centralizzato in Docker (Porta `8080`)
+Copia la cartella del progetto sulla VM Alpine (oppure clonalo con `git clone ...`) ed entra nella directory:
+```sh
+cd /opt/fermi-rover-server   # (o il percorso della cartella del progetto)
+docker compose up -d --build
+```
+Cosa fa automaticamente `docker compose up -d --build`:
+1. Compila il frontend React/Vite (`dist/`) e fa il bundle del server Node/WebSocket (`dist-server/server.js`) in uno stage builder.
+2. Crea un'immagine finale Alpine Linux leggerissima in produzione.
+3. Espone la WebUI e il server WebSocket `/ws` sulla porta **`8080`** con riavvio automatico (`restart: unless-stopped`).
+
+Comandi utili per gestire il container su Alpine:
+```sh
+# Controlla che il container sia "Up (healthy)"
+docker compose ps
+
+# Vedi i log in tempo reale (connessioni tablet, Raspberry Pi e Shelly 1)
+docker compose logs -f
+
+# Verifica che l'API risponda localmente sulla porta 8080
+wget -qO- http://127.0.0.1:8080/api/status
+
+# Ferma / Riavvia il server
+docker compose down
+docker compose up -d
+```
+
+> **💡 Suggerimento Pro (Zero-NAT su Alpine VM)**: Nel file `docker-compose.yml` puoi facoltativamente decommentare `network_mode: host` (e commentare `ports:`) per avere latenza di rete nativa sulla VM Linux senza bridge NAT di Docker.
+
+---
+
+### Opzione B: Avvio Diretto Senza Docker (Node.js nativo)
+1. Assicurati di avere **Node.js ≥ 20** installato (`node -v`).
+2. Compila e avvia sulla **porta `8080`**:
+   ```bash
+   npm install
+   npm run build
+   PORT=8080 NODE_ENV=production npm start
+   ```
+   *(Su Windows PowerShell: `$env:PORT="8080"; $env:NODE_ENV="production"; npm start`)*
+
+### C. Cosa fa il Codice Server (`server.ts`)
 Il file `/server.ts` gestisce in un unico processo Express + WebSocket (`ws`):
 1. **Serving della WebUI** (porta `8080`, accessibile da tutti i 6 tablet via HTTP).
 2. **Server WebSocket `/ws`** con due ruoli:
    - `?role=tablet&tabletId=...&name=...`: identifica ciascuno dei 6 tablet.
-   - `?role=robot`: identifica il Raspberry Pi 3 B v1.2, salva il suo IPv4 reale (rimuovendo l'eventuale prefisso `::ffff:`) e aggiorna la telemetria.
+   - `?role=robot`: identifica il Raspberry Pi 3 B v1.2, salva il suo IPv4 reale e aggiorna la telemetria.
 3. **Gestione Turni (Slot-Lease)**:
    - Mantiene `queueState.activePilotId`, `timeRemainingSec` e la coda `queue`.
    - I pacchetti `drive:command` vengono inoltrati al robot **solo se provengono dal tablet che detiene il turno attivo**.
@@ -210,21 +262,33 @@ Il file `/server.ts` gestisce in un unico processo Express + WebSocket (`ws`):
 
 ---
 
-## 🤖 6. Guida Raspberry Pi — Cosa Eseguire, Codice Completo & Avvio Automatico
+## 🤖 6. Guida Raspberry Pi — Quali File Importare, Codice & Avvio Automatico
 
-### A. Copia ed Esecuzione Manuale su Raspberry Pi 3 B v1.2
-Crea la cartella sul Raspberry Pi:
+### A. Quali file devi importare sul Raspberry Pi 3 B v1.2?
+Sul Raspberry Pi **NON** devi copiare né Node.js, né la cartella `src/`, né i file Docker. Devi importare **SOLO 2 file** (più 1 opzionale) dalla cartella `raspberry_pi/` di questo progetto dentro `/home/pi/fermi_rover/`:
+
+| File del Repository | Obbligatorio? | A cosa serve sul Raspberry Pi |
+|---|---|---|
+| **`raspberry_pi/robot_controller.py`** | ✅ **Sì (Obbligatorio)** | Script Python principale: pilota l'L298D/L298N via GPIO, trasmette lo stream video della Camera Module 3 Wide sulla porta `8081` e si connette via WebSocket al server centrale. |
+| **`raspberry_pi/fermi_rover.service`** | ✅ **Consigliato** | Servizio `systemd` per avviare automaticamente lo script all'accensione del Raspberry Pi (e disattivare il risparmio energetico Wi-Fi). |
+| `raspberry_pi/requirements.txt` | ⚪ *Opzionale* | Elenco di riferimento delle librerie Python (già installabili direttamente via `apt`). |
+
+Esempio rapido per copiarli dal tuo PC al Raspberry Pi via `scp`:
 ```bash
-mkdir -p ~/fermi_rover
+ssh pi@<IP_RASPBERRY> "mkdir -p ~/fermi_rover"
+scp raspberry_pi/robot_controller.py raspberry_pi/fermi_rover.service pi@<IP_RASPBERRY>:~/fermi_rover/
+```
+
+### B. Esecuzione Manuale su Raspberry Pi 3 B v1.2
+Accedi al Raspberry Pi ed entra nella cartella:
+```bash
 cd ~/fermi_rover
 ```
-Copia al suo interno il file **`raspberry_pi/robot_controller.py`** presente in questo repository (oppure scaricalo/copialo via `scp` o dalla finestra *"Guida Hardware"* della WebUI).
-
-Avvia lo script puntando all'IP del server centrale sulla porta **8080**:
+Avvia lo script puntando all'IP della tua VM Alpine / Server centrale sulla porta **8080**:
 ```bash
 python3 robot_controller.py --server ws://192.168.1.100:8080 --cam-port 8081
 ```
-*(Sostituisci `192.168.1.100` con l'IP reale del PC server in laboratorio!)*
+*(Sostituisci `192.168.1.100` con l'IP reale della VM Alpine sulla LAN del laboratorio!)*
 
 Parametri opzionali supportati da `robot_controller.py`:
 - `--server`: URL WebSocket del server centrale (default `ws://192.168.1.100:8080`)

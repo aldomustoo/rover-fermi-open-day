@@ -1,0 +1,15 @@
+services:
+  fermi-rover-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fermi-rover-server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+    # Opzionale (solo su Linux/Alpine VM): decommenta "network_mode: host" e commenta "ports"
+    # se vuoi latenza di rete nativa senza NAT del bridge Docker:
+    # network_mode: host
