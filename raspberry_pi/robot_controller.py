@@ -25,6 +25,7 @@ import sys
 import time
 import json
 import socket
+import signal
 import logging
 import argparse
 import threading
@@ -375,8 +376,13 @@ def get_local_ip():
 # ==============================================================================
 # CLIENT WEBSOCKET VERSO LA DASHBOARD CENTRALE
 # ==============================================================================
+stop_event = threading.Event()
+active_ws_app = None
+
+
 def run_websocket_client(server_url: str, motor_driver: L298NMotorDriver):
-    while True:
+    global active_ws_app
+    while not stop_event.is_set():
         try:
             base = server_url.rstrip('/')
             ws_url = f"{base}/ws?role=robot"
@@ -386,7 +392,7 @@ def run_websocket_client(server_url: str, motor_driver: L298NMotorDriver):
                 logging.info(">> Robot connesso con successo al server centrale!")
 
                 def telemetry_worker():
-                    while ws.sock and ws.sock.connected:
+                    while not stop_event.is_set() and ws.sock and ws.sock.connected:
                         try:
                             msg = {
                                 "type": "telemetry",
@@ -398,7 +404,7 @@ def run_websocket_client(server_url: str, motor_driver: L298NMotorDriver):
                             ws.send(json.dumps(msg))
                         except Exception:
                             break
-                        time.sleep(2.0)
+                        stop_event.wait(2.0)
 
                 threading.Thread(target=telemetry_worker, daemon=True).start()
 
@@ -416,28 +422,34 @@ def run_websocket_client(server_url: str, motor_driver: L298NMotorDriver):
                     logging.error(f"Errore parsing messaggio server: {e}")
 
             def on_error(ws, error):
-                logging.warning(f"Avviso WebSocket: {error}")
+                if not stop_event.is_set():
+                    logging.warning(f"Avviso WebSocket: {error}")
                 motor_driver.set_motors(0, 0)
 
             def on_close(ws, close_status_code, close_msg):
-                logging.warning("Connessione con il server chiusa. Arresto motori per sicurezza.")
+                if not stop_event.is_set():
+                    logging.warning("Connessione con il server chiusa. Arresto motori per sicurezza.")
                 motor_driver.set_motors(0, 0)
 
-            ws_app = websocket.WebSocketApp(
+            active_ws_app = websocket.WebSocketApp(
                 ws_url,
                 on_open=on_open,
                 on_message=on_message,
                 on_error=on_error,
                 on_close=on_close
             )
-            ws_app.run_forever(ping_interval=3, ping_timeout=2)
+            active_ws_app.run_forever(ping_interval=3, ping_timeout=2)
 
         except Exception as e:
-            logging.error(f"Eccezione di connessione: {e}")
+            if not stop_event.is_set():
+                logging.error(f"Eccezione di connessione: {e}")
             motor_driver.set_motors(0, 0)
+        finally:
+            active_ws_app = None
 
-        logging.info("Tentativo di riconnessione tra 3 secondi...")
-        time.sleep(3)
+        if not stop_event.is_set():
+            logging.info("Tentativo di riconnessione tra 3 secondi...")
+            stop_event.wait(3.0)
 
 
 # ==============================================================================
@@ -494,11 +506,26 @@ def main():
     logging.info(f"Stream video MJPEG Multi-Tablet su: http://{local_ip}:{args.cam_port}/stream.mjpg")
     threading.Thread(target=cam_server.serve_forever, daemon=True).start()
 
+    def handle_exit_signal(signum, _frame):
+        logging.info(f"Segnale di arresto ricevuto ({signum}). Chiusura sicura in corso...")
+        stop_event.set()
+        motor_driver.set_motors(0, 0)
+        if active_ws_app:
+            try:
+                active_ws_app.close()
+            except Exception:
+                pass
+
+    signal.signal(signal.SIGINT, handle_exit_signal)
+    signal.signal(signal.SIGTERM, handle_exit_signal)
+
     try:
         run_websocket_client(args.server, motor_driver)
     except KeyboardInterrupt:
+        stop_event.set()
         logging.info("Interruzione richiesta da utente (Ctrl+C). Arresto sicuro.")
     finally:
+        stop_event.set()
         motor_driver.cleanup()
         if picam2_instance:
             try:
@@ -506,8 +533,12 @@ def main():
                 picam2_instance.close()
             except Exception:
                 pass
-        cam_server.shutdown()
-        logging.info("Arresto completato. GPIO e Camera rilasciati.")
+        try:
+            cam_server.shutdown()
+            cam_server.server_close()
+        except Exception:
+            pass
+        logging.info("Arresto completato. GPIO, porta 8081 e Camera rilasciati.")
 
 
 if __name__ == "__main__":
