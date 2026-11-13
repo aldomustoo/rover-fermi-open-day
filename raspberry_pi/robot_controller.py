@@ -34,7 +34,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 # Gestione librerie GPIO (gpiozero preinstallata su Raspberry Pi OS Desktop)
 HAS_GPIO = False
 try:
-    from gpiozero import PWMOutputDevice, DigitalOutputDevice
+    from gpiozero import Device, PWMOutputDevice, DigitalOutputDevice
     HAS_GPIO = True
 except (ImportError, Exception):
     HAS_GPIO = False
@@ -83,13 +83,14 @@ PIN_IN4 = 27  # Direzione Destra B     (Pin fisico 13 | WiringPi GPIO 2)
 # CLASSE DRIVER MOTORI L298N CON WATCHDOG FAIL-SAFE
 # ==============================================================================
 class L298NMotorDriver:
-    def __init__(self, ena=PIN_ENA, in1=PIN_IN1, in2=PIN_IN2, enb=PIN_ENB, in3=PIN_IN3, in4=PIN_IN4, pwm_freq=500):
+    def __init__(self, ena=PIN_ENA, in1=PIN_IN1, in2=PIN_IN2, enb=PIN_ENB, in3=PIN_IN3, in4=PIN_IN4, pwm_freq=500, use_pwm=True):
         self.ena_pin = ena
         self.in1_pin = in1
         self.in2_pin = in2
         self.enb_pin = enb
         self.in3_pin = in3
         self.in4_pin = in4
+        self.use_pwm = use_pwm
         self.last_command_time = time.time()
         self.watchdog_timeout = 0.70  # 700ms senza comandi/keepalive = STOP immediato
         self.is_stopped = True
@@ -98,19 +99,26 @@ class L298NMotorDriver:
 
         if HAS_GPIO:
             logging.info(
-                f"Inizializzazione GPIO L298N: ENA={ena}, IN1={in1}, IN2={in2} | "
-                f"ENB={enb}, IN3={in3}, IN4={in4} (PWM {pwm_freq}Hz)"
+                f"Inizializzazione GPIO L298N ({type(Device.pin_factory).__name__}): "
+                f"ENA={ena}, IN1={in1}, IN2={in2} | ENB={enb}, IN3={in3}, IN4={in4} "
+                f"({'PWM ' + str(pwm_freq) + 'Hz' if use_pwm else 'DIGITALE ON/OFF'})"
             )
             opened = []
             try:
-                self.pwm_left = PWMOutputDevice(self.ena_pin, frequency=pwm_freq)
+                if use_pwm:
+                    self.pwm_left = PWMOutputDevice(self.ena_pin, frequency=pwm_freq)
+                else:
+                    self.pwm_left = DigitalOutputDevice(self.ena_pin)
                 opened.append(self.pwm_left)
                 self.dir_left1 = DigitalOutputDevice(self.in1_pin)
                 opened.append(self.dir_left1)
                 self.dir_left2 = DigitalOutputDevice(self.in2_pin)
                 opened.append(self.dir_left2)
 
-                self.pwm_right = PWMOutputDevice(self.enb_pin, frequency=pwm_freq)
+                if use_pwm:
+                    self.pwm_right = PWMOutputDevice(self.enb_pin, frequency=pwm_freq)
+                else:
+                    self.pwm_right = DigitalOutputDevice(self.enb_pin)
                 opened.append(self.pwm_right)
                 self.dir_right1 = DigitalOutputDevice(self.in3_pin)
                 opened.append(self.dir_right1)
@@ -157,29 +165,29 @@ class L298NMotorDriver:
                 if left_speed > 0:
                     self.dir_left1.on()
                     self.dir_left2.off()
-                    self.pwm_left.value = abs(left_speed) / 100.0
+                    self.pwm_left.value = (abs(left_speed) / 100.0) if self.use_pwm else 1
                 elif left_speed < 0:
                     self.dir_left1.off()
                     self.dir_left2.on()
-                    self.pwm_left.value = abs(left_speed) / 100.0
+                    self.pwm_left.value = (abs(left_speed) / 100.0) if self.use_pwm else 1
                 else:
                     self.dir_left1.off()
                     self.dir_left2.off()
-                    self.pwm_left.value = 0.0
+                    self.pwm_left.value = 0 if not self.use_pwm else 0.0
 
                 # Motore Destro
                 if right_speed > 0:
                     self.dir_right1.on()
                     self.dir_right2.off()
-                    self.pwm_right.value = abs(right_speed) / 100.0
+                    self.pwm_right.value = (abs(right_speed) / 100.0) if self.use_pwm else 1
                 elif right_speed < 0:
                     self.dir_right1.off()
                     self.dir_right2.on()
-                    self.pwm_right.value = abs(right_speed) / 100.0
+                    self.pwm_right.value = (abs(right_speed) / 100.0) if self.use_pwm else 1
                 else:
                     self.dir_right1.off()
                     self.dir_right2.off()
-                    self.pwm_right.value = 0.0
+                    self.pwm_right.value = 0 if not self.use_pwm else 0.0
             except Exception as err:
                 logging.error(f"Errore comando motori: {err}")
 
@@ -466,6 +474,7 @@ def main():
     parser.add_argument("--fps", type=int, default=24, help="Frame rate video (default 24fps)")
     parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
     parser.add_argument("--pwm-freq", type=int, default=500, help="Frequenza PWM L298N/L298D in Hz (default 500)")
+    parser.add_argument("--no-pwm", action="store_true", help="Usa ENA/ENB in modalità digitale pura ON/OFF (senza PWM)")
     parser.add_argument("--test-motors", action="store_true", help="Esegue un test diretto dei motori L298N e poi esce")
     parser.add_argument("--ena", type=int, default=PIN_ENA, help="GPIO BCM per ENA (sinistro)")
     parser.add_argument("--in1", type=int, default=PIN_IN1, help="GPIO BCM per IN1 (sinistro)")
@@ -483,7 +492,7 @@ def main():
     motor_driver = L298NMotorDriver(
         ena=args.ena, in1=args.in1, in2=args.in2,
         enb=args.enb, in3=args.in3, in4=args.in4,
-        pwm_freq=args.pwm_freq
+        pwm_freq=args.pwm_freq, use_pwm=(not args.no_pwm)
     )
 
     if args.test_motors:
@@ -497,8 +506,15 @@ def main():
                 ("Entrambi AVANTI 100%", 100, 100),
             ]:
                 logging.info(f"TEST: {label}")
-                for _ in range(4):
+                for i in range(4):
                     motor_driver.set_motors(l_spd, r_spd)
+                    if i == 0 and motor_driver.pwm_left:
+                        logging.info(
+                            f"   Stato Pin -> ENA={motor_driver.pwm_left.value} "
+                            f"IN1={motor_driver.dir_left1.value} IN2={motor_driver.dir_left2.value} | "
+                            f"ENB={motor_driver.pwm_right.value} "
+                            f"IN3={motor_driver.dir_right1.value} IN4={motor_driver.dir_right2.value}"
+                        )
                     time.sleep(0.35)
                 motor_driver.set_motors(0, 0)
                 time.sleep(0.5)
