@@ -1,0 +1,17 @@
+[Unit]
+Description=Fermi Mantova Open Day Rover Controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/fermi_rover
+ExecStartPre=-/sbin/iw dev wlan0 set power_save off
+ExecStart=/usr/bin/python3 /home/pi/fermi_rover/robot_controller.py --server ws://192.168.1.100:8080 --cam-port 8081
+Restart=always
+RestartSec=3
+KillSignal=SIGINT
+
+[Install]
+WantedBy=multi-user.target

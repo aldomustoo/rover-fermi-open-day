@@ -1,0 +1,6 @@
+{
+  "name": "Fermi Mantova Rover Control - Open Day Telecomunicazioni",
+  "description": "Dashboard di teleoperazione per robot rover Raspberry Pi L298N con telecamera CSI, gestione turni multi-tablet e controllo relè Shelly 1 per l'Open Day di Telecomunicazioni dell'I.S. E. Fermi di Mantova.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

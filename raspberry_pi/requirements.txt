@@ -1,0 +1,5 @@
+websocket-client>=1.6.0
+gpiozero>=2.0
+Pillow>=10.0.0
+# Su Raspberry Pi OS 32-bit Desktop (Bullseye/Bookworm) installare via apt:
+# sudo apt install -y python3-picamera2 python3-gpiozero python3-websocket python3-pil
