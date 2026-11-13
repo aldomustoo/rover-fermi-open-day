@@ -83,7 +83,20 @@ PIN_IN4 = 27  # Direzione Destra B     (Pin fisico 13 | WiringPi GPIO 2)
 # CLASSE DRIVER MOTORI L298N CON WATCHDOG FAIL-SAFE
 # ==============================================================================
 class L298NMotorDriver:
-    def __init__(self, ena=PIN_ENA, in1=PIN_IN1, in2=PIN_IN2, enb=PIN_ENB, in3=PIN_IN3, in4=PIN_IN4, pwm_freq=500, use_pwm=True):
+    def __init__(
+        self,
+        ena=PIN_ENA,
+        in1=PIN_IN1,
+        in2=PIN_IN2,
+        enb=PIN_ENB,
+        in3=PIN_IN3,
+        in4=PIN_IN4,
+        pwm_freq=500,
+        use_pwm=True,
+        invert_left=True,
+        invert_right=True,
+        swap_motors=False,
+    ):
         self.ena_pin = ena
         self.in1_pin = in1
         self.in2_pin = in2
@@ -91,6 +104,9 @@ class L298NMotorDriver:
         self.in3_pin = in3
         self.in4_pin = in4
         self.use_pwm = use_pwm
+        self.invert_left = invert_left
+        self.invert_right = invert_right
+        self.swap_motors = swap_motors
         self.last_command_time = time.time()
         self.watchdog_timeout = 0.70  # 700ms senza comandi/keepalive = STOP immediato
         self.is_stopped = True
@@ -160,30 +176,35 @@ class L298NMotorDriver:
             if not self.pwm_left:
                 return
 
+            hw_left = -left_speed if self.invert_left else left_speed
+            hw_right = -right_speed if self.invert_right else right_speed
+            if self.swap_motors:
+                hw_left, hw_right = hw_right, hw_left
+
             try:
                 # Motore Sinistro
-                if left_speed > 0:
+                if hw_left > 0:
                     self.dir_left1.on()
                     self.dir_left2.off()
-                    self.pwm_left.value = (abs(left_speed) / 100.0) if self.use_pwm else 1
-                elif left_speed < 0:
+                    self.pwm_left.value = (abs(hw_left) / 100.0) if self.use_pwm else 1
+                elif hw_left < 0:
                     self.dir_left1.off()
                     self.dir_left2.on()
-                    self.pwm_left.value = (abs(left_speed) / 100.0) if self.use_pwm else 1
+                    self.pwm_left.value = (abs(hw_left) / 100.0) if self.use_pwm else 1
                 else:
                     self.dir_left1.off()
                     self.dir_left2.off()
                     self.pwm_left.value = 0 if not self.use_pwm else 0.0
 
                 # Motore Destro
-                if right_speed > 0:
+                if hw_right > 0:
                     self.dir_right1.on()
                     self.dir_right2.off()
-                    self.pwm_right.value = (abs(right_speed) / 100.0) if self.use_pwm else 1
-                elif right_speed < 0:
+                    self.pwm_right.value = (abs(hw_right) / 100.0) if self.use_pwm else 1
+                elif hw_right < 0:
                     self.dir_right1.off()
                     self.dir_right2.on()
-                    self.pwm_right.value = (abs(right_speed) / 100.0) if self.use_pwm else 1
+                    self.pwm_right.value = (abs(hw_right) / 100.0) if self.use_pwm else 1
                 else:
                     self.dir_right1.off()
                     self.dir_right2.off()
@@ -475,6 +496,9 @@ def main():
     parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
     parser.add_argument("--pwm-freq", type=int, default=500, help="Frequenza PWM L298N/L298D in Hz (default 500)")
     parser.add_argument("--no-pwm", action="store_true", help="Usa ENA/ENB in modalità digitale pura ON/OFF (senza PWM)")
+    parser.add_argument("--no-invert-left", action="store_false", dest="invert_left", default=True, help="Non invertire polarità motore sinistro")
+    parser.add_argument("--no-invert-right", action="store_false", dest="invert_right", default=True, help="Non invertire polarità motore destro")
+    parser.add_argument("--swap-motors", action="store_true", help="Scambia canale sinistro e destro")
     parser.add_argument("--test-motors", action="store_true", help="Esegue un test diretto dei motori L298N e poi esce")
     parser.add_argument("--ena", type=int, default=PIN_ENA, help="GPIO BCM per ENA (sinistro)")
     parser.add_argument("--in1", type=int, default=PIN_IN1, help="GPIO BCM per IN1 (sinistro)")
@@ -492,7 +516,9 @@ def main():
     motor_driver = L298NMotorDriver(
         ena=args.ena, in1=args.in1, in2=args.in2,
         enb=args.enb, in3=args.in3, in4=args.in4,
-        pwm_freq=args.pwm_freq, use_pwm=(not args.no_pwm)
+        pwm_freq=args.pwm_freq, use_pwm=(not args.no_pwm),
+        invert_left=args.invert_left, invert_right=args.invert_right,
+        swap_motors=args.swap_motors
     )
 
     if args.test_motors:
