@@ -177,9 +177,9 @@ export const VideoHud: React.FC<VideoHudProps> = ({
           <Camera className="w-4 h-4 text-cyan-400 animate-pulse" />
           <span className="font-bold text-white">CSI-CAM 0</span>
           <span className="text-slate-400">|</span>
-          <span className="text-emerald-400 font-semibold">25 FPS</span>
+          <span className="text-emerald-400 font-semibold">24 FPS</span>
           <span className="text-slate-400 hidden sm:inline">|</span>
-          <span className="text-slate-300 hidden sm:inline">640x480</span>
+          <span className="text-slate-300 hidden sm:inline">640x360</span>
         </div>
 
         {/* Center Pilot Status Pill */}

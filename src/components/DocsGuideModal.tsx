@@ -24,7 +24,7 @@ from gpiozero import PWMOutputDevice, DigitalOutputDevice
 from picamera2 import Picamera2
 from picamera2.encoders import MJPEGEncoder
 from picamera2.outputs import FileOutput
-from libcamera import controls
+from libcamera import controls, Transform
 
 # Pinout L298N/L298D (BCM usata da gpiozero | tra parentesi Pin Fisico / WiringPi)
 PIN_ENA, PIN_IN1, PIN_IN2 = 12, 23, 24  # Motore SX (Pin 32/wPi26, 16/wPi4, 18/wPi5)
@@ -43,9 +43,9 @@ def set_motors(left, right):
     elif right < 0: dir_dx1.off(); dir_dx2.on(); pwm_dx.value = abs(right)/100.0
     else: dir_dx1.off(); dir_dx2.off(); pwm_dx.value = 0.0
 
-# Camera Module 3 Wide (640x360 16:9 FOV 120° + Autofocus Continuo)
+# Camera Module 3 Wide (640x360 16:9 FOV 120° + rotazione 180° + Autofocus Continuo)
 picam2 = Picamera2()
-picam2.configure(picam2.create_video_configuration(main={"size": (640, 360)}))
+picam2.configure(picam2.create_video_configuration(main={"size": (640, 360)}, transform=Transform(hflip=1, vflip=1)))
 picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
 
   const copyToClipboard = () => {
@@ -78,7 +78,7 @@ picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
                 Guida Hardware & Step-by-Step Open Day
               </h3>
               <p className="text-xs text-slate-400">
-                I.S. Enrico Fermi Mantova • Telecomunicazioni & Robotica
+                I.S. Enrico Fermi Mantova • Indirizzo Telecomunicazioni
               </p>
             </div>
           </div>

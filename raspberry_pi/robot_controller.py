@@ -47,10 +47,11 @@ try:
     from picamera2.outputs import FileOutput
     HAS_CAMERA = True
     try:
-        from libcamera import controls
+        from libcamera import controls, Transform
         HAS_LIBCAMERA_CONTROLS = True
     except ImportError:
         HAS_LIBCAMERA_CONTROLS = False
+        Transform = None
 except (ImportError, Exception):
     HAS_CAMERA = False
 
@@ -253,22 +254,26 @@ class MJPEGStreamHandler(BaseHTTPRequestHandler):
         return
 
 
-def start_camera_capture(width=640, height=360, fps=24):
+def start_camera_capture(width=640, height=360, fps=24, rotate_180=True):
     """
     Configura Picamera2 ottimizzata per Camera Module 3 Wide (TNBA2004 / IMX708)
     su Raspberry Pi 3 B v1.2 (32-bit).
-    Usa formato 16:9 (640x360) per mantenere il FOV grandangolare 120° senza crop
-    e MJPEGEncoder hardware/nativo per latenza minima (< 50ms) e basso uso CPU.
+    Usa formato 16:9 (640x360) per mantenere il FOV grandangolare 120° senza crop,
+    rotazione hardware 180° (hflip+vflip) per montaggio capovolto e MJPEGEncoder nativo.
     """
     if HAS_CAMERA:
-        logging.info(f"Avvio CSI Camera Module 3 Wide ({width}x{height} @ {fps}fps)...")
+        logging.info(f"Avvio CSI Camera Module 3 Wide ({width}x{height} @ {fps}fps, rotate_180={rotate_180})...")
         try:
             picam2 = Picamera2()
+            config_kwargs = {
+                "main": {"size": (width, height)},
+                "controls": {"FrameRate": fps},
+            }
+            if rotate_180 and Transform is not None:
+                config_kwargs["transform"] = Transform(hflip=1, vflip=1)
+
             # 16:9 preserva tutto il grandangolo del sensore IMX708 ed è leggero per Pi 3B
-            video_config = picam2.create_video_configuration(
-                main={"size": (width, height)},
-                controls={"FrameRate": fps}
-            )
+            video_config = picam2.create_video_configuration(**config_kwargs)
             picam2.configure(video_config)
 
             # Abilita Autofocus Continuo (PDAF) specifico di Camera Module 3 (IMX708)
@@ -425,6 +430,7 @@ def main():
     parser.add_argument("--width", type=int, default=640, help="Larghezza video (default 640 per 16:9 Wide)")
     parser.add_argument("--height", type=int, default=360, help="Altezza video (default 360 per 16:9 Wide)")
     parser.add_argument("--fps", type=int, default=24, help="Frame rate video (default 24fps)")
+    parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
     parser.add_argument("--ena", type=int, default=PIN_ENA, help="GPIO BCM per ENA (sinistro)")
     parser.add_argument("--in1", type=int, default=PIN_IN1, help="GPIO BCM per IN1 (sinistro)")
     parser.add_argument("--in2", type=int, default=PIN_IN2, help="GPIO BCM per IN2 (sinistro)")
@@ -443,7 +449,9 @@ def main():
         enb=args.enb, in3=args.in3, in4=args.in4
     )
 
-    picam2_instance = start_camera_capture(width=args.width, height=args.height, fps=args.fps)
+    picam2_instance = start_camera_capture(
+        width=args.width, height=args.height, fps=args.fps, rotate_180=args.rotate_180
+    )
 
     # ThreadingHTTPServer permette a tutti i 6 tablet di ricevere lo stream video insieme!
     cam_server = ThreadingHTTPServer(('0.0.0.0', args.cam_port), MJPEGStreamHandler)

@@ -1,5 +1,5 @@
 # 📡 Rover Teleoperato Open Day — I.S. Enrico Fermi (Mantova)
-### Indirizzo Telecomunicazioni & Robotica • Dashboard Multi-Tablet (6 Postazioni), Raspberry Pi 3 B v1.2, L298N, Camera Module 3 Wide (TNBA2004) & Shelly 1
+### Indirizzo Telecomunicazioni • Dashboard Multi-Tablet (6 Postazioni), Raspberry Pi 3 B v1.2, L298N, Camera Module 3 Wide (TNBA2004) & Shelly 1
 
 Sistema completo *production-ready* per l'Open Day di Telecomunicazioni dell'**I.S. Enrico Fermi di Mantova**: consente a **6 tablet contemporaneamente** di osservare in tempo reale il flusso video della telecamera CSI e lo stato della lampada Shelly 1, gestendo una **coda di guida a slot temporizzati** lato server in modo che un solo visitatore alla volta possa muovere il rover in totale sicurezza.
 
@@ -294,10 +294,12 @@ Parametri opzionali supportati da `robot_controller.py`:
 - `--server`: URL WebSocket del server centrale (default `ws://192.168.1.100:8080`)
 - `--cam-port`: Porta dello stream MJPEG (default `8081`)
 - `--width` / `--height` / `--fps`: Risoluzione e FPS Camera 3 Wide (default `640` x `360` a `24` fps — formato 16:9 nativo IMX708 che conserva tutto il grandangolo 120° senza appesantire la CPU 32-bit del Pi 3B)
+- `--no-rotate-180`: Di default la camera è ruotata di **180°** via hardware (`Transform(hflip=1, vflip=1)`) per montaggio capovolto; usa questo flag se in futuro la monti dritta
 - `--ena`, `--in1`, `--in2`, `--enb`, `--in3`, `--in4`: Override pin GPIO BCM se cablati diversamente
 
-### B. Codice Completo Raspberry Pi (`raspberry_pi/robot_controller.py`)
+### C. Codice Completo Raspberry Pi (`raspberry_pi/robot_controller.py`)
 Il file completo si trova in `/raspberry_pi/robot_controller.py`. Punti chiave implementati per **Pi 3 B v1.2 + Camera Module 3 Wide (TNBA2004)**:
+- **`Transform(hflip=1, vflip=1)`**: rotazione hardware a 180° a zero carico CPU per compensare la camera montata capovolta.
 - **`MJPEGEncoder` + `FileOutput(stream_output)`**: codifica hardware/nativa di `Picamera2` senza conversioni RGB→PIL in Python.
 - **`controls.AfModeEnum.Continuous`**: abilita l'autofocus PDAF continuo specifico del sensore IMX708 (Camera Module 3 Wide).
 - **`ThreadingHTTPServer`**: consente a **tutti i 6 tablet** di aprire contemporaneamente `http://<IP_PI>:8081/stream.mjpg` senza blocchi.

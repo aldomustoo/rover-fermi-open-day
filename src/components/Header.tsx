@@ -43,7 +43,7 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </div>
             <p className="text-[11px] sm:text-xs text-slate-400 font-mono tracking-tight flex items-center gap-1.5">
-              <span>Telecomunicazioni & Robotica</span>
+              <span>Indirizzo Telecomunicazioni</span>
               <span className="text-slate-600">•</span>
               <span className="text-emerald-400 font-semibold">Open Day 2025</span>
             </p>

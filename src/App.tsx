@@ -407,7 +407,7 @@ export default function App() {
 
       {/* Footer Branding & Copyright */}
       <footer className="border-t border-slate-800/80 bg-slate-950 px-4 py-3 text-center text-xs text-slate-400 font-mono">
-        <span>I.S. Enrico Fermi - Mantova • Laboratorio di Telecomunicazioni & Robotica • Architettura Multi-Tablet WebSockets</span>
+        <span>I.S. Enrico Fermi - Mantova • Laboratorio di Telecomunicazioni • Architettura Multi-Tablet WebSockets</span>
       </footer>
 
       {/* Modals */}
