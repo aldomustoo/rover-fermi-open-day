@@ -94,7 +94,7 @@ picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 gap-2 overflow-x-auto text-xs font-semibold">
           {[
             { id: 'wiring', label: '1. Cablaggio L298N & Cam', icon: Wrench },
-            { id: 'shelly', label: '2. Collegamento Shelly 1', icon: ShieldCheck },
+            { id: 'shelly', label: '2. Collegamento Lampada', icon: ShieldCheck },
             { id: 'python', label: '3. Codice Python Raspberry', icon: Cpu },
             { id: 'launch', label: '4. Avvio & Config LAN', icon: Terminal },
           ].map((tab) => {
@@ -209,9 +209,9 @@ picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
           {activeTab === 'shelly' && (
             <div className="space-y-4">
               <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                <h4 className="font-bold text-white text-sm">Schema Morsettiera Shelly 1 (Gen 1)</h4>
+                <h4 className="font-bold text-white text-sm">Schema Collegamento Lampada</h4>
                 <p className="text-xs text-slate-400">
-                  Lo Shelly 1 possiede un relè a <strong>contatto pulito (Dry Contact)</strong> isolato tra i morsetti <strong>I (Input)</strong> e <strong>O (Output)</strong>.
+                  Il modulo di attuazione della lampada utilizza un relè a <strong>contatto pulito (Dry Contact)</strong> isolato tra i morsetti <strong>I (Input)</strong> e <strong>O (Output)</strong>.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
@@ -221,15 +221,15 @@ picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
                     <p className="text-slate-300"><strong>N</strong>: Neutro 230V AC</p>
                   </div>
                   <div className="p-3 rounded-lg bg-slate-900 border border-slate-800">
-                    <span className="text-cyan-400 font-bold block mb-1">Circuito Lampadina Stand:</span>
+                    <span className="text-cyan-400 font-bold block mb-1">Circuito Lampada:</span>
                     <p className="text-slate-300"><strong>I</strong>: Fase di linea (o +12V DC)</p>
-                    <p className="text-slate-300"><strong>O</strong>: Al morsetto lampadina</p>
+                    <p className="text-slate-300"><strong>O</strong>: Al morsetto lampada</p>
                   </div>
                 </div>
 
                 <div className="p-3 rounded-lg bg-slate-900/80 border border-slate-800 text-xs">
                   <span className="font-bold text-slate-200 block mb-1">API HTTP Diretta (LAN):</span>
-                  <code className="text-cyan-400 break-all">http://&lt;IP_SHELLY&gt;/relay/0?turn=toggle</code>
+                  <code className="text-cyan-400 break-all">http://&lt;IP_LAMPADA&gt;/relay/0?turn=toggle</code>
                   <p className="text-slate-400 mt-1">
                     Il server Web inoltra in tempo reale la richiesta e notifica via WebSocket tutti i 6 tablet connessi istantaneamente.
                   </p>
@@ -300,7 +300,7 @@ picam2.set_controls({"AfMode": controls.AfModeEnum.Continuous})`;
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Apri Chrome su ciascun tablet e vai a: <code className="text-cyan-400 bg-slate-900 px-2 py-0.5 rounded">http://192.168.1.100:8080</code>.
                   Seleziona in alto la postazione (<code className="text-white">Tablet #1</code> .. <code className="text-white">#6</code>).
-                  Tutti vedono lo stream video da <code className="text-white">:8081/stream.mjpg</code> e la lampada Shelly 1; la guida ruota a turni di 45s.
+                  Tutti vedono lo stream video da <code className="text-white">:8081/stream.mjpg</code> e lo stato della lampada; la guida ruota a turni di 45s.
                 </p>
               </div>
             </div>

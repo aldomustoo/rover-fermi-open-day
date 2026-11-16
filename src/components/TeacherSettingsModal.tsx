@@ -53,7 +53,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
   const [statusNotice, setStatusNotice] = useState<string | null>(null);
 
   // Form states
-  const [shellyIp, setShellyIp] = useState(shellyState.ip);
+  const [shellyIp, setShellyIp] = useState(shellyState.ip || '');
   const [slotDuration, setSlotDuration] = useState(queueState.slotDurationSec);
   const [speedLimit, setSpeedLimit] = useState(queueState.maxSpeedPercent);
   const [robotIp, setRobotIp] = useState(robotState.ip || '192.168.1.100');
@@ -61,7 +61,7 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      setShellyIp(shellyState.ip);
+      setShellyIp(shellyState.ip || '');
       setSlotDuration(queueState.slotDurationSec);
       setSpeedLimit(queueState.maxSpeedPercent);
       setRobotIp(robotState.ip || '192.168.1.100');
@@ -377,13 +377,13 @@ export const TeacherSettingsModal: React.FC<TeacherSettingsModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
-                  IP Shelly 1 (Lampada):
+                  IP Lampada (opzionale):
                 </label>
                 <input
                   type="text"
                   value={shellyIp}
                   onChange={(e) => setShellyIp(e.target.value)}
-                  placeholder="192.168.1.50"
+                  placeholder="Lascia vuoto per predefinito"
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-sm focus:outline-none focus:border-cyan-500"
                 />
               </div>

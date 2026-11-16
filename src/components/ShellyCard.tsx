@@ -38,12 +38,10 @@ export const ShellyCard: React.FC<ShellyCardProps> = ({ shellyState, onToggle })
           </div>
           <div>
             <h3 className="font-bold text-sm sm:text-base text-slate-100 flex items-center gap-2">
-              <span>Lampada Stand Shelly 1</span>
+              <span>Lampada</span>
             </h3>
-            <p className="text-[11px] font-mono text-slate-400 flex items-center gap-1.5">
-              <span>Pannello Dimostrativo</span>
-              <span className="text-slate-600">•</span>
-              <span className="text-cyan-400">{shellyState.ip}</span>
+            <p className="text-[11px] font-mono text-slate-400">
+              Controllo Remoto LAN
             </p>
           </div>
         </div>
@@ -98,7 +96,7 @@ export const ShellyCard: React.FC<ShellyCardProps> = ({ shellyState, onToggle })
               {shellyState.isOn ? '⚡ ACCESA' : 'SPENTA'}
             </span>
             <p className="text-[11px] font-mono text-slate-400 mt-1.5">
-              Relè Shelly 1 • Contatto Pulito 230V
+              Stato Lampada Stand
             </p>
           </div>
         </div>

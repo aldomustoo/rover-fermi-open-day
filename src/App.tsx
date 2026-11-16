@@ -57,10 +57,9 @@ export default function App() {
   });
 
   const [shellyState, setShellyState] = useState<ShellyState>({
-    ip: '192.168.1.50',
     isOn: false,
     reachable: true,
-    name: 'Lampada Stand Fermi',
+    name: 'Lampada',
   });
 
   const [motorCalibration, setMotorCalibration] = useState<MotorCalibration>({

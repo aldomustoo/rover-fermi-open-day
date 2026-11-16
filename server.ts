@@ -98,12 +98,12 @@ const robotState: RobotState = {
 };
 
 const shellyConfig: ShellyState = {
-  ip: '192.168.1.50',
+  ip: process.env.SHELLY_IP || '172.16.0.22',
   enabled: true,
   isOn: false,
   reachable: false,
   lastCheck: 0,
-  name: 'Lampada Banco Fermi #1',
+  name: 'Lampada',
 };
 
 const queueState: QueueState = {
@@ -178,7 +178,6 @@ async function startServer() {
         lastCommand: robotState.lastCommand,
       },
       shellyState: {
-        ip: shellyConfig.ip,
         isOn: shellyConfig.isOn,
         reachable: shellyConfig.reachable,
         name: shellyConfig.name,
@@ -251,7 +250,6 @@ async function startServer() {
     broadcast('shelly:update', {
       isOn: shellyConfig.isOn,
       reachable: shellyConfig.reachable,
-      ip: shellyConfig.ip,
     });
 
     res.json({ success: true, isOn: shellyConfig.isOn, reachable: shellyConfig.reachable });
@@ -265,7 +263,7 @@ async function startServer() {
       return;
     }
 
-    if (typeof shellyIp === 'string') shellyConfig.ip = shellyIp.trim();
+    if (typeof shellyIp === 'string' && shellyIp.trim().length > 0) shellyConfig.ip = shellyIp.trim();
     if (typeof slotDurationSec === 'number' && slotDurationSec >= 15 && slotDurationSec <= 180) {
       queueState.slotDurationSec = slotDurationSec;
     }

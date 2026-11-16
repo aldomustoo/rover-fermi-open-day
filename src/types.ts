@@ -17,7 +17,7 @@ export interface RobotState {
 }
 
 export interface ShellyState {
-  ip: string;
+  ip?: string;
   isOn: boolean;
   reachable: boolean;
   name: string;
