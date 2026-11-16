@@ -93,7 +93,7 @@ class L298NMotorDriver:
         in4=PIN_IN4,
         pwm_freq=100,
         use_pwm=True,
-        invert_left=False,
+        invert_left=True,
         invert_right=True,
         swap_motors=False,
         min_pwm_percent=0,
@@ -532,7 +532,7 @@ def main():
     parser.add_argument("--pwm-freq", type=int, default=100, help="Frequenza PWM L298N/L298D in Hz (default 100)")
     parser.add_argument("--no-pwm", action="store_true", help="Usa ENA/ENB in modalità digitale pura ON/OFF (senza PWM)")
     parser.add_argument("--min-pwm", type=int, default=0, help="Soglia minima PWM anti-stallo (es. 55, 70 o 100)")
-    parser.add_argument("--invert-left", action="store_true", dest="invert_left", default=False, help="Inverti polarità motore sinistro (default: normale)")
+    parser.add_argument("--no-invert-left", action="store_false", dest="invert_left", default=True, help="Non invertire polarità motore sinistro (default: invertito)")
     parser.add_argument("--no-invert-right", action="store_false", dest="invert_right", default=True, help="Non invertire polarità motore destro (default: invertito)")
     parser.add_argument("--swap-motors", action="store_true", help="Scambia canale sinistro e destro")
     parser.add_argument("--test-motors", action="store_true", help="Esegue un test diretto dei motori L298N e poi esce")

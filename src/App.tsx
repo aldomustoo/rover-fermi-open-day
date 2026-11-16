@@ -64,7 +64,7 @@ export default function App() {
   });
 
   const [motorCalibration, setMotorCalibration] = useState<MotorCalibration>({
-    invertLeft: false,
+    invertLeft: true,
     invertRight: true,
     swapMotors: false,
     minPwmPercent: 0,

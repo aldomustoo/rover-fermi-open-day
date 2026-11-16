@@ -83,7 +83,7 @@ let calibrationCustomizedByTeacher = false;
 let testMotorTimers: NodeJS.Timeout[] = [];
 
 const motorCalibration: MotorCalibrationState = {
-  invertLeft: false,
+  invertLeft: true,
   invertRight: true,
   swapMotors: false,
   minPwmPercent: 0,
