@@ -93,7 +93,7 @@ class L298NMotorDriver:
         in4=PIN_IN4,
         pwm_freq=500,
         use_pwm=True,
-        invert_left=True,
+        invert_left=False,
         invert_right=True,
         swap_motors=False,
     ):
@@ -117,7 +117,8 @@ class L298NMotorDriver:
             logging.info(
                 f"Inizializzazione GPIO L298N ({type(Device.pin_factory).__name__}): "
                 f"ENA={ena}, IN1={in1}, IN2={in2} | ENB={enb}, IN3={in3}, IN4={in4} "
-                f"({'PWM ' + str(pwm_freq) + 'Hz' if use_pwm else 'DIGITALE ON/OFF'})"
+                f"({'PWM ' + str(pwm_freq) + 'Hz' if use_pwm else 'DIGITALE ON/OFF'}) | "
+                f"invert_left={invert_left}, invert_right={invert_right}, swap_motors={swap_motors}"
             )
             opened = []
             try:
@@ -496,8 +497,8 @@ def main():
     parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
     parser.add_argument("--pwm-freq", type=int, default=500, help="Frequenza PWM L298N/L298D in Hz (default 500)")
     parser.add_argument("--no-pwm", action="store_true", help="Usa ENA/ENB in modalità digitale pura ON/OFF (senza PWM)")
-    parser.add_argument("--no-invert-left", action="store_false", dest="invert_left", default=True, help="Non invertire polarità motore sinistro")
-    parser.add_argument("--no-invert-right", action="store_false", dest="invert_right", default=True, help="Non invertire polarità motore destro")
+    parser.add_argument("--invert-left", action="store_true", dest="invert_left", default=False, help="Inverti polarità motore sinistro (default: normale)")
+    parser.add_argument("--no-invert-right", action="store_false", dest="invert_right", default=True, help="Non invertire polarità motore destro (default: invertito)")
     parser.add_argument("--swap-motors", action="store_true", help="Scambia canale sinistro e destro")
     parser.add_argument("--test-motors", action="store_true", help="Esegue un test diretto dei motori L298N e poi esce")
     parser.add_argument("--ena", type=int, default=PIN_ENA, help="GPIO BCM per ENA (sinistro)")
