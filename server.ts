@@ -7,8 +7,30 @@ import { WebSocketServer, WebSocket } from 'ws';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
-const HOST = '0.0.0.0';
+function getCliArg(flag: string): string | undefined {
+  const idx = process.argv.indexOf(flag);
+  if (idx !== -1 && idx + 1 < process.argv.length) {
+    return process.argv[idx + 1];
+  }
+  const prefixed = process.argv.find((arg) => arg.startsWith(`${flag}=`));
+  if (prefixed) {
+    return prefixed.slice(flag.length + 1);
+  }
+  return undefined;
+}
+
+const isProd = process.env.NODE_ENV === 'production';
+const cliPort = getCliArg('--port');
+const envPort = process.env.PORT;
+const resolvedPortStr =
+  cliPort ||
+  (!isProd && envPort && envPort === process.env.NGINX_PORT
+    ? process.env.DEFAULT_APP_PORT || '3000'
+    : envPort) ||
+  (isProd ? '8080' : '3000');
+
+const PORT = parseInt(resolvedPortStr, 10) || (isProd ? 8080 : 3000);
+const HOST = getCliArg('--host') || process.env.HOST || '0.0.0.0';
 
 // Global System State
 interface TabletClient {
@@ -48,8 +70,24 @@ interface QueueState {
   queue: Array<{ id: string; name: string; joinedAt: number }>;
 }
 
+interface MotorCalibrationState {
+  invertLeft: boolean;
+  invertRight: boolean;
+  swapMotors: boolean;
+  minPwmPercent: number;
+}
+
 const clients = new Map<string, TabletClient>();
 let robotWs: WebSocket | null = null;
+let calibrationCustomizedByTeacher = false;
+let testMotorTimers: NodeJS.Timeout[] = [];
+
+const motorCalibration: MotorCalibrationState = {
+  invertLeft: false,
+  invertRight: true,
+  swapMotors: false,
+  minPwmPercent: 0,
+};
 
 const robotState: RobotState = {
   connected: false,
@@ -145,6 +183,7 @@ async function startServer() {
         reachable: shellyConfig.reachable,
         name: shellyConfig.name,
       },
+      motorCalibration: { ...motorCalibration },
       connectedTabletsCount: clients.size,
     };
   }
@@ -220,7 +259,7 @@ async function startServer() {
 
   // Admin / Supervisor Update Config
   app.post('/api/admin/config', (req, res) => {
-    const { pin, shellyIp, slotDurationSec, maxSpeedPercent, safeMode, robotIp } = req.body;
+    const { pin, shellyIp, slotDurationSec, maxSpeedPercent, safeMode, robotIp, motorCalibration: cal } = req.body;
     if (pin !== 'fermi' && pin !== 'FERMI2025' && pin !== '1234') {
       res.status(403).json({ error: 'PIN non valido' });
       return;
@@ -239,9 +278,64 @@ async function startServer() {
     if (typeof robotIp === 'string' && robotIp) {
       robotState.ip = robotIp.trim();
     }
+    if (cal && typeof cal === 'object') {
+      if (typeof cal.invertLeft === 'boolean') motorCalibration.invertLeft = cal.invertLeft;
+      if (typeof cal.invertRight === 'boolean') motorCalibration.invertRight = cal.invertRight;
+      if (typeof cal.swapMotors === 'boolean') motorCalibration.swapMotors = cal.swapMotors;
+      if (typeof cal.minPwmPercent === 'number' && [0, 55, 70, 100].includes(cal.minPwmPercent)) {
+        motorCalibration.minPwmPercent = cal.minPwmPercent;
+      }
+      calibrationCustomizedByTeacher = true;
+      if (robotWs && robotWs.readyState === WebSocket.OPEN) {
+        robotWs.send(JSON.stringify({ type: 'calibration', ...motorCalibration }));
+      }
+    }
 
     broadcast('state:update', getFullBroadcastState());
     res.json({ success: true, updated: true });
+  });
+
+  // Direct Motor Test Pulse from Teacher Panel (bypasses queue for wiring calibration)
+  app.post('/api/admin/test-motor', (req, res) => {
+    const { pin, left, right, durationMs } = req.body;
+    if (pin !== 'fermi' && pin !== 'FERMI2025' && pin !== '1234') {
+      res.status(403).json({ error: 'PIN non valido' });
+      return;
+    }
+
+    testMotorTimers.forEach((t) => clearTimeout(t));
+    testMotorTimers = [];
+
+    const l = Math.max(-100, Math.min(100, Math.round(Number(left) || 0)));
+    const r = Math.max(-100, Math.min(100, Math.round(Number(right) || 0)));
+    const dur = Math.max(200, Math.min(1500, Math.round(Number(durationMs) || 850)));
+
+    robotState.lastCommand = { left: l, right: r, timestamp: Date.now() };
+    if (robotWs && robotWs.readyState === WebSocket.OPEN) {
+      robotWs.send(JSON.stringify({ type: 'drive', left: l, right: r, timestamp: Date.now() }));
+    }
+    broadcast('drive:telemetry', { left: l, right: r, pilotId: 'teacher-test' });
+
+    if (l !== 0 || r !== 0) {
+      if (dur > 450) {
+        const keepaliveTimer = setTimeout(() => {
+          if (robotWs && robotWs.readyState === WebSocket.OPEN) {
+            robotWs.send(JSON.stringify({ type: 'drive', left: l, right: r, timestamp: Date.now() }));
+          }
+        }, 400);
+        testMotorTimers.push(keepaliveTimer);
+      }
+      const stopTimer = setTimeout(() => {
+        robotState.lastCommand = { left: 0, right: 0, timestamp: Date.now() };
+        if (robotWs && robotWs.readyState === WebSocket.OPEN) {
+          robotWs.send(JSON.stringify({ type: 'drive', left: 0, right: 0, timestamp: Date.now() }));
+        }
+        broadcast('drive:telemetry', { left: 0, right: 0, pilotId: 'teacher-test' });
+      }, dur);
+      testMotorTimers.push(stopTimer);
+    }
+
+    res.json({ success: true, left: l, right: r, robotConnected: Boolean(robotWs && robotWs.readyState === WebSocket.OPEN) });
   });
 
   // Emergency stop or skip turn
@@ -251,6 +345,8 @@ async function startServer() {
       res.status(403).json({ error: 'PIN non valido' });
       return;
     }
+    testMotorTimers.forEach((t) => clearTimeout(t));
+    testMotorTimers = [];
     robotState.lastCommand = { left: 0, right: 0, timestamp: Date.now() };
     if (robotWs && robotWs.readyState === WebSocket.OPEN) {
       robotWs.send(JSON.stringify({ type: 'drive', left: 0, right: 0, emergency: true }));
@@ -274,6 +370,10 @@ async function startServer() {
       robotState.connected = true;
       robotState.ip = clientIp;
       robotState.lastHeartbeat = Date.now();
+
+      if (calibrationCustomizedByTeacher) {
+        ws.send(JSON.stringify({ type: 'calibration', ...motorCalibration }));
+      }
 
       broadcast('robot:status', { connected: true, ip: clientIp });
 
@@ -435,14 +535,29 @@ async function startServer() {
   });
 
   // Vite middleware in dev or static serving in production
-  const isProd = process.env.NODE_ENV === 'production';
   if (!isProd) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    const vitePromise = import('vite').then(({ createServer: createViteServer }) =>
+      createViteServer({
+        server: {
+          middlewareMode: true,
+          hmr: process.env.DISABLE_HMR === 'true' ? false : undefined,
+        },
+        appType: 'spa',
+      })
+    );
+
+    vitePromise.catch((err) => {
+      console.error('Vite initialization error:', err);
     });
-    app.use(vite.middlewares);
+
+    app.use(async (req, res, next) => {
+      try {
+        const vite = await vitePromise;
+        vite.middlewares(req, res, next);
+      } catch (err) {
+        next(err);
+      }
+    });
   } else {
     const distPath = path.resolve(process.cwd(), 'dist');
     app.use(express.static(distPath));
@@ -451,8 +566,13 @@ async function startServer() {
     });
   }
 
-  server.listen(PORT, HOST, () => {
-    console.log(`[Fermi Mantova] Server attivo su http://${HOST}:${PORT}`);
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(PORT, HOST, () => {
+      server.removeListener('error', reject);
+      console.log(`[Fermi Mantova] Server attivo su http://${HOST}:${PORT}`);
+      resolve();
+    });
   });
 }
 

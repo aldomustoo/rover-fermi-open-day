@@ -67,7 +67,7 @@ export const TouchJoystick: React.FC<TouchJoystickProps> = ({
   const handlePointerDown = (e: React.PointerEvent) => {
     if (!enabled) return;
     activePointerId.current = e.pointerId;
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     setIsDragging(true);
     updatePosition(e.clientX, e.clientY);
   };
@@ -126,7 +126,7 @@ export const TouchJoystick: React.FC<TouchJoystickProps> = ({
 
         {/* Dynamic Draggable Knob */}
         <div
-          className={`absolute w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center shadow-2xl transition-transform ${
+          className={`pointer-events-none absolute w-16 h-16 sm:w-18 sm:h-18 rounded-full flex items-center justify-center shadow-2xl transition-transform ${
             isDragging ? 'duration-0' : 'duration-200 ease-out'
           } ${
             enabled

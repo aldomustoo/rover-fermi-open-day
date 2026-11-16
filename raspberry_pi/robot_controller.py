@@ -91,11 +91,12 @@ class L298NMotorDriver:
         enb=PIN_ENB,
         in3=PIN_IN3,
         in4=PIN_IN4,
-        pwm_freq=500,
+        pwm_freq=100,
         use_pwm=True,
         invert_left=False,
         invert_right=True,
         swap_motors=False,
+        min_pwm_percent=0,
     ):
         self.ena_pin = ena
         self.in1_pin = in1
@@ -107,6 +108,7 @@ class L298NMotorDriver:
         self.invert_left = invert_left
         self.invert_right = invert_right
         self.swap_motors = swap_motors
+        self.min_pwm_percent = max(0, min(100, int(min_pwm_percent)))
         self.last_command_time = time.time()
         self.watchdog_timeout = 0.70  # 700ms senza comandi/keepalive = STOP immediato
         self.is_stopped = True
@@ -118,7 +120,7 @@ class L298NMotorDriver:
                 f"Inizializzazione GPIO L298N ({type(Device.pin_factory).__name__}): "
                 f"ENA={ena}, IN1={in1}, IN2={in2} | ENB={enb}, IN3={in3}, IN4={in4} "
                 f"({'PWM ' + str(pwm_freq) + 'Hz' if use_pwm else 'DIGITALE ON/OFF'}) | "
-                f"invert_left={invert_left}, invert_right={invert_right}, swap_motors={swap_motors}"
+                f"invert_left={invert_left}, invert_right={invert_right}, swap_motors={swap_motors}, min_pwm={self.min_pwm_percent}%"
             )
             opened = []
             try:
@@ -160,6 +162,31 @@ class L298NMotorDriver:
         self.watchdog_thread = threading.Thread(target=self._watchdog_loop, daemon=True)
         self.watchdog_thread.start()
 
+    def _calc_duty(self, speed_abs: int):
+        if speed_abs <= 0:
+            return 0.0 if self.use_pwm else 0
+        if not self.use_pwm or self.min_pwm_percent >= 100:
+            return 1.0 if self.use_pwm else 1
+        if self.min_pwm_percent > 0:
+            effective = self.min_pwm_percent + (speed_abs / 100.0) * (100 - self.min_pwm_percent)
+            return min(1.0, effective / 100.0)
+        return min(1.0, speed_abs / 100.0)
+
+    def set_calibration(self, invert_left=None, invert_right=None, swap_motors=None, min_pwm_percent=None):
+        with self._lock:
+            if isinstance(invert_left, bool):
+                self.invert_left = invert_left
+            if isinstance(invert_right, bool):
+                self.invert_right = invert_right
+            if isinstance(swap_motors, bool):
+                self.swap_motors = swap_motors
+            if min_pwm_percent is not None:
+                self.min_pwm_percent = max(0, min(100, int(min_pwm_percent)))
+            logging.info(
+                f"[CALIBRATION] Aggiornata live -> invert_left={self.invert_left}, "
+                f"invert_right={self.invert_right}, swap_motors={self.swap_motors}, min_pwm={self.min_pwm_percent}%"
+            )
+
     def set_motors(self, left_speed: int, right_speed: int):
         """
         left_speed e right_speed: da -100 (retro max) a +100 (avanti max). 0 = stop.
@@ -187,11 +214,11 @@ class L298NMotorDriver:
                 if hw_left > 0:
                     self.dir_left1.on()
                     self.dir_left2.off()
-                    self.pwm_left.value = (abs(hw_left) / 100.0) if self.use_pwm else 1
+                    self.pwm_left.value = self._calc_duty(abs(hw_left))
                 elif hw_left < 0:
                     self.dir_left1.off()
                     self.dir_left2.on()
-                    self.pwm_left.value = (abs(hw_left) / 100.0) if self.use_pwm else 1
+                    self.pwm_left.value = self._calc_duty(abs(hw_left))
                 else:
                     self.dir_left1.off()
                     self.dir_left2.off()
@@ -201,11 +228,11 @@ class L298NMotorDriver:
                 if hw_right > 0:
                     self.dir_right1.on()
                     self.dir_right2.off()
-                    self.pwm_right.value = (abs(hw_right) / 100.0) if self.use_pwm else 1
+                    self.pwm_right.value = self._calc_duty(abs(hw_right))
                 elif hw_right < 0:
                     self.dir_right1.off()
                     self.dir_right2.on()
-                    self.pwm_right.value = (abs(hw_right) / 100.0) if self.use_pwm else 1
+                    self.pwm_right.value = self._calc_duty(abs(hw_right))
                 else:
                     self.dir_right1.off()
                     self.dir_right2.off()
@@ -448,6 +475,13 @@ def run_websocket_client(server_url: str, motor_driver: L298NMotorDriver):
                         left = int(data.get("left", 0))
                         right = int(data.get("right", 0))
                         motor_driver.set_motors(left, right)
+                    elif msg_type == "calibration":
+                        motor_driver.set_calibration(
+                            invert_left=data.get("invertLeft"),
+                            invert_right=data.get("invertRight"),
+                            swap_motors=data.get("swapMotors"),
+                            min_pwm_percent=data.get("minPwmPercent"),
+                        )
                     elif msg_type == "ping":
                         ws.send(json.dumps({"type": "pong"}))
                 except Exception as e:
@@ -495,8 +529,9 @@ def main():
     parser.add_argument("--height", type=int, default=360, help="Altezza video (default 360 per 16:9 Wide)")
     parser.add_argument("--fps", type=int, default=24, help="Frame rate video (default 24fps)")
     parser.add_argument("--no-rotate-180", action="store_false", dest="rotate_180", default=True, help="Disabilita la rotazione 180° (di default capovolta)")
-    parser.add_argument("--pwm-freq", type=int, default=500, help="Frequenza PWM L298N/L298D in Hz (default 500)")
+    parser.add_argument("--pwm-freq", type=int, default=100, help="Frequenza PWM L298N/L298D in Hz (default 100)")
     parser.add_argument("--no-pwm", action="store_true", help="Usa ENA/ENB in modalità digitale pura ON/OFF (senza PWM)")
+    parser.add_argument("--min-pwm", type=int, default=0, help="Soglia minima PWM anti-stallo (es. 55, 70 o 100)")
     parser.add_argument("--invert-left", action="store_true", dest="invert_left", default=False, help="Inverti polarità motore sinistro (default: normale)")
     parser.add_argument("--no-invert-right", action="store_false", dest="invert_right", default=True, help="Non invertire polarità motore destro (default: invertito)")
     parser.add_argument("--swap-motors", action="store_true", help="Scambia canale sinistro e destro")
@@ -519,7 +554,7 @@ def main():
         enb=args.enb, in3=args.in3, in4=args.in4,
         pwm_freq=args.pwm_freq, use_pwm=(not args.no_pwm),
         invert_left=args.invert_left, invert_right=args.invert_right,
-        swap_motors=args.swap_motors
+        swap_motors=args.swap_motors, min_pwm_percent=args.min_pwm
     )
 
     if args.test_motors:

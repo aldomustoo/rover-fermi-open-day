@@ -23,10 +23,18 @@ export interface ShellyState {
   name: string;
 }
 
+export interface MotorCalibration {
+  invertLeft: boolean;
+  invertRight: boolean;
+  swapMotors: boolean;
+  minPwmPercent: number; // 0 (normale), 55, 70, 100 (digitale ON/OFF)
+}
+
 export interface ServerStatePayload {
   queueState: QueueState;
   robotState: RobotState;
   shellyState: ShellyState;
+  motorCalibration?: MotorCalibration;
   connectedTabletsCount: number;
   yourId?: string;
 }

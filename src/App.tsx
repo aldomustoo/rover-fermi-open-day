@@ -8,7 +8,7 @@ import { QueueManager } from './components/QueueManager';
 import { TeacherSettingsModal } from './components/TeacherSettingsModal';
 import { DocsGuideModal } from './components/DocsGuideModal';
 import { playTurnStart, playTurnWarning, playEmergencyStop } from './services/sound';
-import type { QueueState, RobotState, ShellyState, ServerStatePayload } from './types';
+import type { QueueState, RobotState, ShellyState, MotorCalibration, ServerStatePayload } from './types';
 
 export default function App() {
   // Tablet identification
@@ -61,6 +61,13 @@ export default function App() {
     isOn: false,
     reachable: true,
     name: 'Lampada Stand Fermi',
+  });
+
+  const [motorCalibration, setMotorCalibration] = useState<MotorCalibration>({
+    invertLeft: false,
+    invertRight: true,
+    swapMotors: false,
+    minPwmPercent: 0,
   });
 
   const [tabletsCount, setTabletsCount] = useState(1);
@@ -131,12 +138,14 @@ export default function App() {
             setQueueState(payload.queueState);
             setRobotState(payload.robotState);
             setShellyState(payload.shellyState);
+            if (payload.motorCalibration) setMotorCalibration(payload.motorCalibration);
             setTabletsCount(payload.connectedTabletsCount || 1);
           } else if (data.event === 'state:update') {
             const payload = data.payload as ServerStatePayload;
             setQueueState(payload.queueState);
             setRobotState(payload.robotState);
             setShellyState(payload.shellyState);
+            if (payload.motorCalibration) setMotorCalibration(payload.motorCalibration);
             setTabletsCount(payload.connectedTabletsCount || 1);
           } else if (data.event === 'timer:tick') {
             setQueueState((prev) => ({
@@ -298,12 +307,26 @@ export default function App() {
     maxSpeedPercent?: number;
     safeMode?: boolean;
     robotIp?: string;
+    motorCalibration?: MotorCalibration;
   }) => {
     try {
       const res = await fetch('/api/admin/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(config),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleTestMotor = async (pin: string, left: number, right: number) => {
+    try {
+      const res = await fetch('/api/admin/test-motor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin, left, right, durationMs: 900 }),
       });
       return res.ok;
     } catch {
@@ -453,7 +476,9 @@ export default function App() {
         queueState={queueState}
         shellyState={shellyState}
         robotState={robotState}
+        motorCalibration={motorCalibration}
         onUpdateConfig={handleUpdateTeacherConfig}
+        onTestMotor={handleTestMotor}
         onEmergencyStop={handleEmergencyStop}
       />
 
